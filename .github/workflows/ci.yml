@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm test
+      - run: npm run build
+      - name: Check the page's scripts parse
+        run: |
+          node -e '
+            const html = require("fs").readFileSync("dist/focus-board.html", "utf8");
+            const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+            scripts.forEach(s => new Function(s));
+            console.log("OK:", scripts.length, "scripts");
+          '
