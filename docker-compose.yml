@@ -1,0 +1,16 @@
+# Run ThePlanner: docker compose up -d   then open http://localhost:3000
+services:
+  theplanner:
+    build: .
+    image: theplanner
+    ports:
+      - "3000:3000"
+    environment:
+      # The address people use to reach the app. Used in calendar feed links.
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
+    volumes:
+      - planner-data:/data
+    restart: unless-stopped
+
+volumes:
+  planner-data:
