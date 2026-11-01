@@ -1,0 +1,38 @@
+# Production stack: ThePlanner behind Caddy, which gets and renews a free HTTPS certificate.
+# Started by deploy/setup.sh; settings come from deploy/.env.
+name: theplanner
+
+services:
+  app:
+    build: ..
+    image: theplanner
+    restart: unless-stopped
+    environment:
+      PUBLIC_URL: https://${DOMAIN}
+      VAPID_SUBJECT: mailto:${EMAIL}
+    volumes:
+      - planner-data:/data
+    expose:
+      - "3000"
+
+  caddy:
+    image: caddy:2.8.4-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN}
+      EMAIL: ${EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  planner-data:
+  caddy-data:
+  caddy-config:

@@ -41,3 +41,29 @@ jobs:
           curl -fsS localhost:3000/ | grep -q '<div id="root">'
       - if: failure()
         run: docker logs planner
+
+  production-stack:
+    name: Production stack (Caddy + HTTPS) smoke test
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start the stack the way deploy/setup.sh does
+        working-directory: deploy
+        run: |
+          printf 'DOMAIN=localhost\nEMAIL=ci@example.com\n' > .env
+          docker compose up -d --build
+      - name: Reach the app over HTTPS through Caddy
+        run: |
+          for i in $(seq 1 40); do curl -fsSk https://localhost/api/health && break; sleep 3; done
+          curl -fsSk https://localhost/api/health
+          curl -fsSk https://localhost/ | grep -q '<div id="root">'
+          curl -fsSkI https://localhost/ | grep -i strict-transport-security
+      - name: Run the backup script
+        working-directory: deploy
+        run: |
+          ./backup.sh
+          docker compose exec -T app ls /data/backups
+      - if: failure()
+        working-directory: deploy
+        run: docker compose logs

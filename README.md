@@ -64,7 +64,17 @@ Everything works without configuration. Secrets that aren't set are generated on
 | `JWT_SECRET` | Signs session cookies | generated |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Keys for push notifications | generated |
 
-Browsers only allow push notifications on `https://` sites and on `localhost`. To use reminders on your phone, deploy behind HTTPS (any reverse proxy, or a host like Render, Railway or Fly.io) and set `PUBLIC_URL`.
+Browsers only allow push notifications on `https://` sites and on `localhost`, so deploy behind HTTPS to get reminders on your phone.
+
+### Deploy for free
+
+[DEPLOY.md](DEPLOY.md) walks through hosting ThePlanner on Oracle Cloud's Always Free tier with automatic HTTPS. On the server it's one command:
+
+```bash
+sudo ./deploy/setup.sh
+```
+
+It installs Docker, opens the firewall, starts the app behind [Caddy](https://caddyserver.com) with a free certificate, and schedules daily database backups. `deploy/update.sh` updates to the latest code and keeps your data.
 
 ## How it works
 
@@ -95,6 +105,7 @@ The scheduling logic lives in one shared TypeScript package, `@theplanner/core`,
 packages/core     Scheduler, timeline, quick-add parser, iCalendar writer (pure TypeScript, unit tested)
 apps/server       Express API, SQLite storage, accounts, reminders, calendar feed
 apps/web          React app (Vite): Today, Week, Tasks, Insights, Settings
+deploy            Production stack (Caddy + HTTPS), setup, update and backup scripts
 ```
 
 ### Security
