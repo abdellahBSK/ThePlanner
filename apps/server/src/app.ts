@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 import cookieParser from "cookie-parser";
 import express, { type NextFunction, type Request, type Response } from "express";
@@ -146,6 +147,24 @@ export function createApp(db: Db, config: Config) {
 
   // ---------- public ----------
   app.get("/api/health", (_req, res) => res.json({ ok: true }));
+
+  if (config.devDemo) {
+    // Dev only: sign in as a fixed demo user (with example data) by plain URL, then redirect.
+    app.get("/api/dev/demo-login", (req, res) => {
+      const email = "demo@theplanner.local";
+      const tz = typeof req.query.tz === "string" && isValidTimeZone(req.query.tz) ? req.query.tz : "UTC";
+      let user = repo.findUserForLogin(email)?.user;
+      if (!user) {
+        // Random, never-disclosed password: nobody can log in to this account with a password.
+        user = repo.createUser({ email, name: "Demo", passwordHash: bcrypt.hashSync(randomBytes(32).toString("hex"), 4), timezone: tz });
+      }
+      if (repo.state(user.id).tasks.length === 0) loadDemo(db, repo, user);
+      startSession(res, user);
+      const next = req.query.next;
+      const safe = typeof next === "string" && /^\/(?![/\\])/.test(next) ? next : "/";
+      res.redirect(302, safe);
+    });
+  }
 
   app.post("/api/auth/signup", authLimiter, async (req, res) => {
     const input = parse(signupSchema, req.body);

@@ -52,6 +52,8 @@ npm start            # http://localhost:3000
 
 For development, `npm run dev` starts the API on port 3000 and the web app with hot reload on **http://localhost:5173**.
 
+**Preview with demo data:** run `npm run dev:demo` (local only), then open http://localhost:5173/api/dev/demo-login?next=/week to sign in as a demo user with example data.
+
 ## Configuration
 
 Everything works without configuration. Secrets that aren't set are generated on first start and kept in the data folder.
