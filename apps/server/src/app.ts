@@ -10,7 +10,7 @@ import { z } from "zod";
 import { DEFAULT_SETTINGS, isValidTimeZone, type Settings } from "@theplanner/core";
 import type { Config } from "./config";
 import type { Db } from "./db";
-import { loadDemo } from "./demo";
+import { DEMO_EMAIL, loadDemo } from "./demo";
 import { calendarFeed } from "./plan";
 import { newCalendarToken, Repo, type User } from "./repo";
 import { sendToUser } from "./push";
@@ -100,6 +100,8 @@ function parse<S extends z.ZodTypeAny>(schema: S, body: unknown): z.output<S> {
 
 const publicUser = (u: User) => ({ id: u.id, email: u.email, name: u.name, settings: u.settings, createdAt: u.createdAt });
 
+export const isLoopback = (addr: string | undefined) => addr === "127.0.0.1" || addr === "::1" || addr === "::ffff:127.0.0.1";
+
 export function createApp(db: Db, config: Config) {
   const repo = new Repo(db);
   const app = express();
@@ -151,14 +153,19 @@ export function createApp(db: Db, config: Config) {
   if (config.devDemo) {
     // Dev only: sign in as a fixed demo user (with example data) by plain URL, then redirect.
     app.get("/api/dev/demo-login", (req, res) => {
-      const email = "demo@theplanner.local";
+      // The server listens on all interfaces; only local requests (incl. the Vite proxy) may use this.
+      if (!isLoopback(req.socket.remoteAddress)) throw new HttpError(404, "Not found");
+      const email = DEMO_EMAIL;
       const tz = typeof req.query.tz === "string" && isValidTimeZone(req.query.tz) ? req.query.tz : "UTC";
       let user = repo.findUserForLogin(email)?.user;
       if (!user) {
         // Random, never-disclosed password: nobody can log in to this account with a password.
         user = repo.createUser({ email, name: "Demo", passwordHash: bcrypt.hashSync(randomBytes(32).toString("hex"), 4), timezone: tz });
       }
-      if (repo.state(user.id).tasks.length === 0) loadDemo(db, repo, user);
+      // Always reset to a fresh random password, so a password someone set on this account never works.
+      user = repo.updateUser(user.id, { passwordHash: bcrypt.hashSync(randomBytes(32).toString("hex"), 4) });
+      const existing = repo.state(user.id);
+      if (existing.tasks.length === 0 && existing.habits.length === 0) loadDemo(db, repo, user);
       startSession(res, user);
       const next = req.query.next;
       const safe = typeof next === "string" && /^\/(?![/\\])/.test(next) ? next : "/";
@@ -168,6 +175,7 @@ export function createApp(db: Db, config: Config) {
 
   app.post("/api/auth/signup", authLimiter, async (req, res) => {
     const input = parse(signupSchema, req.body);
+    if (input.email === DEMO_EMAIL) throw new HttpError(409, "This email address is reserved. Use a different one.");
     if (repo.emailTaken(input.email)) throw new HttpError(409, "An account with this email already exists. Sign in instead.");
     const user = repo.createUser({
       email: input.email,

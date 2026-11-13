@@ -2,6 +2,9 @@ import { addDays, nowIn } from "@theplanner/core";
 import { transaction, type Db } from "./db";
 import type { Repo, User } from "./repo";
 
+/** Reserved address of the dev-only demo account. */
+export const DEMO_EMAIL = "demo@theplanner.local";
+
 /** A realistic example semester, so a new user sees the planner working right away. */
 export function loadDemo(db: Db, repo: Repo, user: User): void {
   const today = nowIn(user.settings.timezone).date;

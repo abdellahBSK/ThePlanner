@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import request from "supertest";
 import { describe, expect, it } from "vitest";
-import { createApp } from "../src/app";
+import { createApp, isLoopback } from "../src/app";
 import { loadConfig } from "../src/config";
 import { openDb } from "../src/db";
 
@@ -124,5 +124,48 @@ describe("GET /api/dev/demo-login", () => {
     expect(res.status).toBe(401);
     expect(res.headers.location).toBeUndefined();
     expect(res.headers["set-cookie"]).toBeUndefined();
+  });
+});
+
+describe("demo account hardening", () => {
+  it("rejects signup with the reserved demo address, in any mode", async () => {
+    for (const env of [{}, on]) {
+      const { app } = setup(env);
+      const res = await request(app).post("/api/auth/signup").send({ name: "X", email: "Demo@ThePlanner.local", password: "correct horse" });
+      expect(res.status).toBe(409);
+    }
+  });
+
+  it("resets the password of a pre-existing demo account on sign-in", async () => {
+    const { app, repo } = setup();
+    const { default: bcrypt } = await import("bcryptjs");
+    repo.createUser({ email: "demo@theplanner.local", name: "Demo", passwordHash: bcrypt.hashSync("known-password", 4), timezone: "UTC" });
+    const before = await request(app).post("/api/auth/login").send({ email: "demo@theplanner.local", password: "known-password" });
+    expect(before.status).toBe(200);
+    expect((await request(app).get("/api/dev/demo-login")).status).toBe(302);
+    const after = await request(app).post("/api/auth/login").send({ email: "demo@theplanner.local", password: "known-password" });
+    expect(after.status).toBe(401);
+  });
+
+  it("does not reseed when tasks were deleted but habits remain", async () => {
+    const { app } = setup();
+    const agent = request.agent(app);
+    await agent.get("/api/dev/demo-login");
+    const state = (await agent.get("/api/state")).body;
+    for (const t of state.tasks) await agent.delete(`/api/tasks/${t.id}`);
+    await agent.get("/api/dev/demo-login");
+    const after = (await agent.get("/api/state")).body;
+    expect(after.tasks).toHaveLength(0);
+    expect(after.habits).toHaveLength(state.habits.length);
+  });
+
+  it("serves loopback requests (supertest connects locally)", async () => {
+    const { app } = setup();
+    expect((await request(app).get("/api/dev/demo-login")).status).toBe(302);
+  });
+
+  it("recognises loopback addresses only", () => {
+    for (const a of ["127.0.0.1", "::1", "::ffff:127.0.0.1"]) expect(isLoopback(a)).toBe(true);
+    for (const a of ["192.168.1.5", "10.0.0.1", "::ffff:10.0.0.1", "", undefined]) expect(isLoopback(a)).toBe(false);
   });
 });
