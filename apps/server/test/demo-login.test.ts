@@ -1,3 +1,4 @@
+import http from "node:http";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -133,6 +134,46 @@ describe("demo account hardening", () => {
       const { app } = setup(env);
       const res = await request(app).post("/api/auth/signup").send({ name: "X", email: "Demo@ThePlanner.local", password: "correct horse" });
       expect(res.status).toBe(409);
+    }
+  });
+
+  it.each(["demo@theplanner.local", "DEMO@THEPLANNER.LOCAL", " Demo@ThePlanner.local "])("rejects signup with the reserved address written as %j", async email => {
+    const { app } = setup();
+    const res = await request(app).post("/api/auth/signup").send({ name: "X", email, password: "correct horse" });
+    expect(res.status).toBe(409);
+    expect(res.headers["set-cookie"]).toBeUndefined();
+  });
+
+  it("reseeds demo data when both tasks and habits are gone", async () => {
+    const { app } = setup();
+    const agent = request.agent(app);
+    await agent.get("/api/dev/demo-login");
+    const state = (await agent.get("/api/state")).body;
+    expect(state.tasks.length).toBeGreaterThan(0);
+    expect(state.habits.length).toBeGreaterThan(0);
+    for (const t of state.tasks) await agent.delete(`/api/tasks/${t.id}`);
+    for (const h of state.habits) await agent.delete(`/api/habits/${h.id}`);
+    expect((await agent.get("/api/state")).body).toMatchObject({ tasks: [], habits: [] });
+    await agent.get("/api/dev/demo-login");
+    const after = (await agent.get("/api/state")).body;
+    expect(after.tasks).toHaveLength(state.tasks.length);
+    expect(after.habits).toHaveLength(state.habits.length);
+  });
+
+  it("returns 404 to a non-loopback client, sets no session and creates no demo account", async () => {
+    const { app, repo } = setup();
+    const server = http.createServer(app);
+    // Pretend the connection came from a LAN address; the route must reject it.
+    server.on("connection", socket => Object.defineProperty(socket, "remoteAddress", { value: "192.168.1.5" }));
+    try {
+      const res = await request(server).get("/api/dev/demo-login?next=/week");
+      expect(res.status).toBe(404);
+      expect(res.body).toEqual({ error: "Not found" });
+      expect(res.headers.location).toBeUndefined();
+      expect(res.headers["set-cookie"]).toBeUndefined();
+      expect(repo.findUserForLogin("demo@theplanner.local")).toBeNull();
+    } finally {
+      server.close();
     }
   });
 
