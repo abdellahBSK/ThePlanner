@@ -85,4 +85,44 @@ describe("GET /api/dev/demo-login", () => {
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe("/");
   });
+
+  it.each([
+    "/%2F%2Fevil.com", // decodes to //evil.com
+    "/%5Cevil.com", // decodes to /\evil.com
+    "%2F%2Fevil.com",
+    "/%09/evil.com", // "/" + tab + "/evil.com": browsers strip the tab, leaving //evil.com
+    "/%0A/evil.com", // "/" + newline + "/evil.com"
+    "/%0D/evil.com",
+    "%09//evil.com", // leading tab: not a path starting with "/"
+    "%0A/evil.com",
+    " //evil.com",
+  ])("never redirects off-site for encoded or whitespace-prefixed next %j", async next => {
+    const { app } = setup();
+    const res = await request(app).get(`/api/dev/demo-login?next=${next}`);
+    expect(res.status).toBe(302);
+    // Resolve the way a browser would: the target must stay on the same origin.
+    expect(new URL(res.headers.location, "http://planner.test").origin).toBe("http://planner.test");
+  });
+
+  it("redirects to / when next is absent", async () => {
+    const { app } = setup();
+    const res = await request(app).get("/api/dev/demo-login");
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe("/");
+  });
+
+  it("falls back to UTC when tz is absent", async () => {
+    const { app } = setup();
+    const agent = request.agent(app);
+    await agent.get("/api/dev/demo-login");
+    expect((await agent.get("/api/auth/me")).body.user.settings.timezone).toBe("UTC");
+  });
+
+  it("returns 401 without a session cookie when the flag is off, never a redirect", async () => {
+    const { app } = setup({});
+    const res = await request(app).get("/api/dev/demo-login?next=/week");
+    expect(res.status).toBe(401);
+    expect(res.headers.location).toBeUndefined();
+    expect(res.headers["set-cookie"]).toBeUndefined();
+  });
 });
