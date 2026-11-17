@@ -48,6 +48,10 @@ const taskFields = {
   notBefore: isoDate.nullable(),
   notes: z.string().max(5000),
   link: z.string().max(2000),
+  repeat: z.object({
+    unit: z.enum(["day", "week", "month"], { message: "Repeat unit must be day, week or month" }),
+    interval: z.number().int("Repeat interval must be a whole number").min(1, "Repeat interval must be 1 to 365").max(365, "Repeat interval must be 1 to 365"),
+  }).nullable(),
 };
 const taskCreate = z.object({
   ...taskFields,
@@ -59,6 +63,7 @@ const taskCreate = z.object({
   notBefore: taskFields.notBefore.default(null),
   notes: taskFields.notes.default(""),
   link: taskFields.link.default(""),
+  repeat: taskFields.repeat.default(null),
   /** Create the project by name if it doesn't exist (used by quick add). */
   projectName: z.string().trim().min(1).max(80).optional(),
 });

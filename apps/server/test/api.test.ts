@@ -79,6 +79,68 @@ describe("planner data", () => {
     expect((await agent.get("/api/state")).body.tasks).toHaveLength(0);
   });
 
+  it("stores and validates a repeat rule", async () => {
+    const agent = await signedIn(ctx.app);
+    const created = await agent.post("/api/tasks").send({ title: "Rent", estimate: 1, due: "2026-11-01", repeat: { unit: "month", interval: 1 } });
+    expect(created.status).toBe(201);
+    expect(created.body.repeat).toEqual({ unit: "month", interval: 1 });
+    expect((await agent.post("/api/tasks").send({ title: "Plain", estimate: 1 })).body.repeat).toBeNull();
+
+    const patched = await agent.patch(`/api/tasks/${created.body.id}`).send({ repeat: { unit: "week", interval: 2 } });
+    expect(patched.body.repeat).toEqual({ unit: "week", interval: 2 });
+    expect((await agent.patch(`/api/tasks/${created.body.id}`).send({ repeat: null })).body.repeat).toBeNull();
+
+    for (const repeat of [{ unit: "year", interval: 1 }, { unit: "day", interval: 0 }, { unit: "day", interval: 366 }, { unit: "day", interval: 1.5 }, { unit: "day" }]) {
+      expect((await agent.post("/api/tasks").send({ title: "Bad", estimate: 1, repeat })).status).toBe(400);
+      expect((await agent.patch(`/api/tasks/${created.body.id}`).send({ repeat })).status).toBe(400);
+    }
+  });
+
+  it("spawns the next occurrence once when a repeating task is done", async () => {
+    const agent = await signedIn(ctx.app);
+    const { body: task } = await agent.post("/api/tasks").send({
+      title: "Weekly report", estimate: 2, priority: 3, notes: "n", due: "2026-11-20", projectName: "Work", repeat: { unit: "week", interval: 2 },
+    });
+    await agent.put("/api/logs").send({ itemId: task.id, date: "2026-11-02", hours: 1 }).expect(204);
+
+    const done = await agent.patch(`/api/tasks/${task.id}`).send({ status: "done" });
+    const tasks = () => agent.get("/api/state").then(r => r.body.tasks as any[]);
+    expect(await tasks()).toHaveLength(2);
+    const next = (await tasks()).find(t => t.id !== task.id);
+    expect(done.body.nextId).toBe(next.id);
+    expect(next).toMatchObject({
+      title: "Weekly report", estimate: 2, priority: 3, notes: "n", projectId: task.projectId, status: "todo",
+      due: "2026-12-04", log: {}, repeat: { unit: "week", interval: 2 },
+    });
+
+    await agent.patch(`/api/tasks/${task.id}`).send({ status: "todo" });
+    await agent.patch(`/api/tasks/${task.id}`).send({ status: "done" });
+    expect(await tasks()).toHaveLength(2);
+
+    // the new occurrence repeats on its own
+    await agent.patch(`/api/tasks/${next.id}`).send({ status: "done" });
+    const all = await tasks();
+    expect(all).toHaveLength(3);
+    expect(all.find(t => t.status === "todo").due).toBe("2026-12-18");
+  });
+
+  it("clamps monthly repeats to the end of the month", async () => {
+    const agent = await signedIn(ctx.app);
+    const { body: task } = await agent.post("/api/tasks").send({ title: "Invoice", estimate: 1, due: "2028-01-31", repeat: { unit: "month", interval: 1 } });
+    await agent.patch(`/api/tasks/${task.id}`).send({ status: "done" });
+    const next = (await agent.get("/api/state")).body.tasks.find((t: any) => t.id !== task.id);
+    expect(next.due).toBe("2028-02-29");
+  });
+
+  it("does not spawn without a repeat rule or a due date", async () => {
+    const agent = await signedIn(ctx.app);
+    const a = (await agent.post("/api/tasks").send({ title: "A", estimate: 1, due: "2026-11-20" })).body;
+    const b = (await agent.post("/api/tasks").send({ title: "B", estimate: 1, repeat: { unit: "day", interval: 1 } })).body;
+    await agent.patch(`/api/tasks/${a.id}`).send({ status: "done" });
+    await agent.patch(`/api/tasks/${b.id}`).send({ status: "done" });
+    expect((await agent.get("/api/state")).body.tasks).toHaveLength(2);
+  });
+
   it("keeps each user's data private", async () => {
     const sara = await signedIn(ctx.app, "sara@example.com");
     const omar = await signedIn(ctx.app, "omar@example.com");

@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { DEFAULT_SETTINGS, type Habit, type Project, type Settings, type Task, type WorkLog } from "@theplanner/core";
+import { DEFAULT_SETTINGS, shiftDate, type Habit, type Project, type Settings, type Task, type WorkLog } from "@theplanner/core";
 import type { Db } from "./db";
 
 export interface User {
@@ -38,6 +38,8 @@ function toTask(row: Row, log: WorkLog): Task {
     notBefore: row.not_before,
     notes: row.notes,
     link: row.link,
+    repeat: row.repeat_unit ? { unit: row.repeat_unit, interval: row.repeat_interval } : null,
+    nextId: row.next_id ?? null,
     log,
     createdAt: row.created_at,
     doneAt: row.done_at,
@@ -167,13 +169,14 @@ export class Repo {
   }
 
   // ---------- tasks ----------
-  createTask(userId: string, input: Omit<Task, "id" | "log" | "createdAt" | "doneAt">): Task {
+  createTask(userId: string, input: Omit<Task, "id" | "log" | "createdAt" | "doneAt" | "nextId">): Task {
     const id = randomUUID();
     this.db
-      .prepare(`INSERT INTO tasks (id, user_id, project_id, title, estimate, due, due_confirmed, priority, status, not_before, notes, link, created_at, done_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .prepare(`INSERT INTO tasks (id, user_id, project_id, title, estimate, due, due_confirmed, priority, status, not_before, notes, link, created_at, done_at, repeat_unit, repeat_interval)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(id, userId, input.projectId, input.title, input.estimate, input.due, input.dueConfirmed ? 1 : 0, input.priority, input.status,
-        input.notBefore, input.notes, input.link, now(), input.status === "done" ? now() : null);
+        input.notBefore, input.notes, input.link, now(), input.status === "done" ? now() : null,
+        input.repeat?.unit ?? null, input.repeat?.interval ?? null);
     return this.getTask(userId, id)!;
   }
 
@@ -185,17 +188,33 @@ export class Repo {
     return toTask(row, log);
   }
 
-  updateTask(userId: string, id: string, patch: Partial<Omit<Task, "id" | "log" | "createdAt" | "doneAt">>): Task | null {
+  updateTask(userId: string, id: string, patch: Partial<Omit<Task, "id" | "log" | "createdAt" | "doneAt" | "nextId">>): Task | null {
     const current = this.getTask(userId, id);
     if (!current) return null;
     const next = { ...current, ...patch };
+    const wasDone = current.status === "done";
     const doneAt = next.status === "done" ? current.doneAt ?? now() : null;
     this.db
-      .prepare(`UPDATE tasks SET project_id = ?, title = ?, estimate = ?, due = ?, due_confirmed = ?, priority = ?, status = ?, not_before = ?, notes = ?, link = ?, done_at = ?
+      .prepare(`UPDATE tasks SET project_id = ?, title = ?, estimate = ?, due = ?, due_confirmed = ?, priority = ?, status = ?, not_before = ?, notes = ?, link = ?, done_at = ?, repeat_unit = ?, repeat_interval = ?
                 WHERE id = ? AND user_id = ?`)
       .run(next.projectId, next.title, next.estimate, next.due, next.dueConfirmed ? 1 : 0, next.priority, next.status, next.notBefore,
-        next.notes, next.link, doneAt, id, userId);
+        next.notes, next.link, doneAt, next.repeat?.unit ?? null, next.repeat?.interval ?? null, id, userId);
+    if (!wasDone && next.status === "done") this.spawnNext(userId, id);
     return this.getTask(userId, id);
+  }
+
+  /** Creates the next occurrence of a done repeating task. Needs a due date; spawns at most once per task. */
+  private spawnNext(userId: string, id: string): void {
+    const task = this.getTask(userId, id);
+    if (!task?.repeat || !task.due || task.nextId) return;
+    const copy = this.createTask(userId, {
+      title: task.title, projectId: task.projectId, estimate: task.estimate,
+      due: shiftDate(task.due, task.repeat.unit, task.repeat.interval),
+      dueConfirmed: task.dueConfirmed, priority: task.priority, status: "todo",
+      notBefore: task.notBefore ? shiftDate(task.notBefore, task.repeat.unit, task.repeat.interval) : null,
+      notes: task.notes, link: task.link, repeat: task.repeat,
+    });
+    this.db.prepare("UPDATE tasks SET next_id = ? WHERE id = ? AND user_id = ?").run(copy.id, id, userId);
   }
 
   deleteTask(userId: string, id: string): boolean {

@@ -14,7 +14,7 @@ export function loadDemo(db: Db, repo: Repo, user: User): void {
     const portfolio = p("Portfolio", "#f59e0b");
 
     const t = (title: string, projectId: string, estimate: number, due: string | null, priority: 1 | 2 | 3, notes = "") =>
-      repo.createTask(user.id, { title, projectId, estimate, due, dueConfirmed: true, priority, status: "todo", notBefore: null, notes, link: "" });
+      repo.createTask(user.id, { title, projectId, estimate, due, dueConfirmed: true, priority, status: "todo", notBefore: null, notes, link: "", repeat: null });
 
     t("TP1: churn prediction with a decision tree", ai.id, 5, inDays(5), 3, "build.ipynb and run.ipynb; predictions in churn_pred.csv");
     t("TP2: neural network on Iris with Keras", ai.id, 4, inDays(10), 2);
