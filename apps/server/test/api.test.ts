@@ -185,6 +185,136 @@ describe("planner data", () => {
   });
 });
 
+describe("recurring tasks", () => {
+  let ctx: ReturnType<typeof setup>;
+  beforeEach(() => { ctx = setup(); });
+
+  const tasksOf = (agent: ReturnType<typeof request.agent>) => agent.get("/api/state").then(r => r.body.tasks as any[]);
+
+  it("accepts the edges of the interval range", async () => {
+    const agent = await signedIn(ctx.app);
+    expect((await agent.post("/api/tasks").send({ title: "Min", estimate: 1, repeat: { unit: "day", interval: 1 } })).status).toBe(201);
+    expect((await agent.post("/api/tasks").send({ title: "Max", estimate: 1, repeat: { unit: "day", interval: 365 } })).status).toBe(201);
+  });
+
+  it("rejects malformed repeat values and keeps the stored rule", async () => {
+    const agent = await signedIn(ctx.app);
+    const { body: task } = await agent.post("/api/tasks").send({ title: "Gym", estimate: 1, due: "2026-11-20", repeat: { unit: "week", interval: 3 } });
+    const bad: unknown[] = [
+      { unit: "week", interval: "2" },
+      { unit: "week", interval: null },
+      { unit: "week", interval: -1 },
+      { unit: "week", interval: 0 },
+      { unit: "week", interval: 366 },
+      { unit: "week", interval: 2.5 },
+      { unit: "Week", interval: 2 },
+      { interval: 2 },
+      { unit: "week" },
+      "week",
+      [],
+    ];
+    for (const repeat of bad) {
+      const label = JSON.stringify(repeat);
+      expect((await agent.patch(`/api/tasks/${task.id}`).send({ repeat })).status, `patch ${label}`).toBe(400);
+      expect((await agent.post("/api/tasks").send({ title: "Bad", estimate: 1, repeat })).status, `create ${label}`).toBe(400);
+    }
+    expect((await tasksOf(agent)).find(t => t.id === task.id).repeat).toEqual({ unit: "week", interval: 3 });
+    expect(await tasksOf(agent)).toHaveLength(1);
+  });
+
+  it("keeps the repeat rule when the task is edited in other ways", async () => {
+    const agent = await signedIn(ctx.app);
+    const { body: task } = await agent.post("/api/tasks").send({ title: "Gym", estimate: 1, due: "2026-11-20", repeat: { unit: "week", interval: 3 } });
+    const edited = await agent.patch(`/api/tasks/${task.id}`).send({ title: "Gym 2", estimate: 2 });
+    expect(edited.body).toMatchObject({ title: "Gym 2", repeat: { unit: "week", interval: 3 } });
+  });
+
+  it("does not spawn once the repeat is cleared", async () => {
+    const agent = await signedIn(ctx.app);
+    const { body: task } = await agent.post("/api/tasks").send({ title: "Gym", estimate: 1, due: "2026-11-20", repeat: { unit: "week", interval: 1 } });
+    await agent.patch(`/api/tasks/${task.id}`).send({ repeat: null }).expect(200);
+    const done = await agent.patch(`/api/tasks/${task.id}`).send({ status: "done" });
+    expect(done.body.nextId).toBeNull();
+    expect(await tasksOf(agent)).toHaveLength(1);
+  });
+
+  it("does not spawn when a repeating task is put on hold", async () => {
+    const agent = await signedIn(ctx.app);
+    const { body: task } = await agent.post("/api/tasks").send({ title: "Gym", estimate: 1, due: "2026-11-20", repeat: { unit: "week", interval: 1 } });
+    await agent.patch(`/api/tasks/${task.id}`).send({ status: "waiting" }).expect(200);
+    expect(await tasksOf(agent)).toHaveLength(1);
+  });
+
+  it("spawns once a deadline is added later", async () => {
+    const agent = await signedIn(ctx.app);
+    const { body: task } = await agent.post("/api/tasks").send({ title: "Stretch", estimate: 0.5, repeat: { unit: "day", interval: 2 } });
+    await agent.patch(`/api/tasks/${task.id}`).send({ status: "done" });
+    expect(await tasksOf(agent)).toHaveLength(1);
+
+    await agent.patch(`/api/tasks/${task.id}`).send({ due: "2026-11-20", status: "todo" }).expect(200);
+    await agent.patch(`/api/tasks/${task.id}`).send({ status: "done" });
+    const all = await tasksOf(agent);
+    expect(all).toHaveLength(2);
+    expect(all.find(t => t.id !== task.id).due).toBe("2026-11-22");
+  });
+
+  it("moves the start date along with the deadline", async () => {
+    const agent = await signedIn(ctx.app);
+    const { body: task } = await agent.post("/api/tasks").send({
+      title: "Review", estimate: 1, due: "2026-11-20", notBefore: "2026-11-18", repeat: { unit: "week", interval: 1 },
+    });
+    await agent.patch(`/api/tasks/${task.id}`).send({ status: "done" });
+    const copy = (await tasksOf(agent)).find(t => t.id !== task.id);
+    expect(copy).toMatchObject({ due: "2026-11-27", notBefore: "2026-11-25" });
+  });
+
+  it("keeps the spawned copy repeating after the original is deleted", async () => {
+    const agent = await signedIn(ctx.app);
+    const { body: original } = await agent.post("/api/tasks").send({ title: "Clean", estimate: 1, due: "2026-11-20", repeat: { unit: "week", interval: 1 } });
+    await agent.patch(`/api/tasks/${original.id}`).send({ status: "done" });
+    const copy = (await tasksOf(agent)).find(t => t.id !== original.id);
+
+    await agent.delete(`/api/tasks/${original.id}`).expect(204);
+    expect(await tasksOf(agent)).toEqual([expect.objectContaining({ id: copy.id, status: "todo" })]);
+
+    await agent.patch(`/api/tasks/${copy.id}`).send({ status: "done" }).expect(200);
+    const all = await tasksOf(agent);
+    expect(all).toHaveLength(2);
+    expect(all.find(t => t.status === "todo").due).toBe("2026-12-04");
+  });
+
+  it("does not recreate a deleted copy when the original is finished again", async () => {
+    const agent = await signedIn(ctx.app);
+    const { body: original } = await agent.post("/api/tasks").send({ title: "Clean", estimate: 1, due: "2026-11-20", repeat: { unit: "week", interval: 1 } });
+    await agent.patch(`/api/tasks/${original.id}`).send({ status: "done" });
+    const copy = (await tasksOf(agent)).find(t => t.id !== original.id);
+    await agent.delete(`/api/tasks/${copy.id}`).expect(204);
+
+    await agent.patch(`/api/tasks/${original.id}`).send({ status: "todo" });
+    await agent.patch(`/api/tasks/${original.id}`).send({ status: "done" });
+    expect(await tasksOf(agent)).toHaveLength(1);
+  });
+
+  it("keeps the month-end date through a chain of monthly repeats (expected to fail: drifts to the 28th)", async () => {
+    const agent = await signedIn(ctx.app);
+    const { body: first } = await agent.post("/api/tasks").send({ title: "Rent", estimate: 1, due: "2027-01-31", repeat: { unit: "month", interval: 1 } });
+    await agent.patch(`/api/tasks/${first.id}`).send({ status: "done" });
+    const second = (await tasksOf(agent)).find(t => t.id !== first.id);
+    expect(second.due).toBe("2027-02-28");
+
+    await agent.patch(`/api/tasks/${second.id}`).send({ status: "done" });
+    const third = (await tasksOf(agent)).find(t => t.status === "todo" && t.id !== second.id);
+    expect(third.due).toBe("2027-03-31");
+  });
+
+  it("explains an interval above 365", async () => {
+    const agent = await signedIn(ctx.app);
+    const res = await agent.post("/api/tasks").send({ title: "Big", estimate: 1, repeat: { unit: "month", interval: 366 } });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/1 to 365/);
+  });
+});
+
 describe("calendar feed and reminders", () => {
   it("serves a calendar feed by secret link and can rotate it", async () => {
     const ctx = setup();
