@@ -180,3 +180,36 @@ describe("quick add repeat", () => {
     expect(parseQuickAdd("Odd every 400 days", SUNDAY).repeat).toBeNull();
   });
 });
+
+describe("shiftDate edge cases", () => {
+  it("keeps leap days and crosses year ends", () => {
+    expect(shiftDate("2028-02-29", "month", 1)).toBe("2028-03-29");
+    expect(shiftDate("2027-02-28", "month", 1)).toBe("2027-03-28");
+    expect(shiftDate("2026-12-31", "month", 1)).toBe("2027-01-31");
+    expect(shiftDate("2028-02-28", "day", 1)).toBe("2028-02-29");
+    expect(shiftDate("2027-02-28", "day", 1)).toBe("2027-03-01");
+  });
+
+  it("handles the largest interval", () => {
+    expect(shiftDate("2026-11-17", "day", 365)).toBe("2027-11-17");
+    expect(shiftDate("2026-11-17", "month", 365)).toBe("2057-04-17");
+  });
+});
+
+describe("quick add repeat edge cases", () => {
+  it("reads every day and every 3 weeks", () => {
+    expect(parseQuickAdd("Water plants every day", SUNDAY)).toEqual({
+      title: "Water plants", estimate: null, due: null, priority: null, project: null, repeat: { unit: "day", interval: 1 },
+    });
+    expect(parseQuickAdd("Backup every 3 weeks", SUNDAY)).toMatchObject({ title: "Backup", repeat: { unit: "week", interval: 3 } });
+    expect(parseQuickAdd("Check every 365 days", SUNDAY).repeat).toEqual({ unit: "day", interval: 365 });
+  });
+
+  it("leaves ordinary uses of 'every' in the title", () => {
+    expect(parseQuickAdd("Read every chapter", SUNDAY)).toMatchObject({ title: "Read every chapter", repeat: null });
+    expect(parseQuickAdd("Plan every weekday", SUNDAY)).toMatchObject({ title: "Plan every weekday", repeat: null });
+    expect(parseQuickAdd("Review every monthly summary", SUNDAY)).toMatchObject({ title: "Review every monthly summary", repeat: null });
+    expect(parseQuickAdd("Check every 366 days", SUNDAY)).toMatchObject({ title: "Check every 366 days", repeat: null });
+    expect(parseQuickAdd("Read every 2 hours", SUNDAY).repeat).toBeNull();
+  });
+});
