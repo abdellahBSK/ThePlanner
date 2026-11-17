@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "tsx watch --disable-warning=ExperimentalWarning src/server.ts",
+    "dev:demo": "tsx watch --env-file=demo.env --disable-warning=ExperimentalWarning src/server.ts",
     "build": "esbuild src/server.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/server.js --external:node:sqlite"
   },
   "dependencies": {

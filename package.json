@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "dev": "concurrently -n api,web -c blue,magenta \"npm run dev --workspace apps/server\" \"npm run dev --workspace apps/web\"",
+    "dev:demo": "concurrently -n api,web -c blue,magenta \"npm run dev:demo --workspace apps/server\" \"npm run dev --workspace apps/web\"",
     "build": "npm run build --workspace apps/web && npm run build --workspace apps/server",
     "start": "node --disable-warning=ExperimentalWarning apps/server/dist/server.js",
     "test": "vitest run",

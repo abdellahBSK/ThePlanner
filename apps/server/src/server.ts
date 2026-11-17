@@ -8,6 +8,8 @@ const config = loadConfig();
 // The production build serves the web app from apps/web/dist unless WEB_DIST says otherwise.
 config.webDist ??= join(__dirname, "../../web/dist");
 
+if (config.devDemo) console.log("Dev demo sign-in is ENABLED at /api/dev/demo-login (local development only)");
+
 const db = openDb(join(config.dataDir, "theplanner.db"));
 const { app, repo } = createApp(db, config);
 const stopReminders = startReminderLoop(repo, config);

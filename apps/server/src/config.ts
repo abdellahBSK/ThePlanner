@@ -12,6 +12,19 @@ export interface Config {
   vapid: { publicKey: string; privateKey: string; subject: string };
   secureCookies: boolean;
   webDist: string | null;
+  /** Dev-only demo sign-in route. Never true in production. */
+  devDemo: boolean;
+}
+
+/** The demo sign-in is allowed only when explicitly asked for, outside production, on a local address. */
+export function isDevDemoEnabled(env: NodeJS.ProcessEnv, publicUrl: string): boolean {
+  if (env.PLANNER_DEV_DEMO !== "1" || env.NODE_ENV === "production") return false;
+  try {
+    const host = new URL(publicUrl).hostname;
+    return host === "localhost" || host === "127.0.0.1";
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -51,5 +64,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     },
     secureCookies: publicUrl.startsWith("https://"),
     webDist: env.WEB_DIST ?? null,
+    devDemo: isDevDemoEnabled(env, publicUrl),
   };
 }
