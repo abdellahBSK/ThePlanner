@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  DEFAULT_SETTINGS, addDays, buildIcs, buildPlan, buildTimeline, hoursAvailable, nowIn, parseDate, parseQuickAdd,
+  DEFAULT_SETTINGS, addDays, shiftDate, buildIcs, buildPlan, buildTimeline, hoursAvailable, nowIn, parseDate, parseQuickAdd,
   remainingAtStart, type Habit, type Settings, type Task,
 } from "../src";
 
@@ -122,13 +122,13 @@ describe("dates", () => {
 describe("quick add", () => {
   it("pulls estimate, deadline, project and priority out of one line", () => {
     expect(parseQuickAdd("Lab 3 cyber report 4h due fri #Cyber-Security !high", SUNDAY)).toEqual({
-      title: "Lab 3 cyber report", estimate: 4, due: "2026-11-06", priority: 3, project: "Cyber Security",
+      title: "Lab 3 cyber report", estimate: 4, due: "2026-11-06", priority: 3, project: "Cyber Security", repeat: null,
     });
   });
 
   it("understands minutes and leaves plain titles alone", () => {
     expect(parseQuickAdd("Read chapter 2 90m by tomorrow", SUNDAY)).toMatchObject({ title: "Read chapter 2", estimate: 1.5, due: "2026-11-02" });
-    expect(parseQuickAdd("Call the bank", SUNDAY)).toEqual({ title: "Call the bank", estimate: null, due: null, priority: null, project: null });
+    expect(parseQuickAdd("Call the bank", SUNDAY)).toEqual({ title: "Call the bank", estimate: null, due: null, priority: null, project: null, repeat: null });
   });
 
   it("keeps 'due' in the title when no date follows it", () => {
@@ -148,5 +148,35 @@ describe("calendar feed", () => {
     expect(ics).toContain("Lab\\, part 1\\; long");
     expect(ics).toContain("DESCRIPTION:line1\\nline2");
     for (const line of ics.split("\r\n")) expect(new TextEncoder().encode(line).length).toBeLessThanOrEqual(75);
+  });
+});
+
+describe("shiftDate", () => {
+  it("shifts by days and weeks", () => {
+    expect(shiftDate("2026-11-30", "day", 1)).toBe("2026-12-01");
+    expect(shiftDate("2026-12-28", "week", 2)).toBe("2027-01-11");
+  });
+
+  it("shifts by months and clamps to the end of the month", () => {
+    expect(shiftDate("2026-01-31", "month", 1)).toBe("2026-02-28");
+    expect(shiftDate("2028-01-31", "month", 1)).toBe("2028-02-29");
+    expect(shiftDate("2026-03-31", "month", 1)).toBe("2026-04-30");
+    expect(shiftDate("2026-11-15", "month", 3)).toBe("2027-02-15");
+    expect(shiftDate("2026-12-31", "month", 12)).toBe("2027-12-31");
+    expect(shiftDate("2024-02-29", "month", 12)).toBe("2025-02-28");
+  });
+});
+
+describe("quick add repeat", () => {
+  it("reads every day, week or month", () => {
+    expect(parseQuickAdd("Water plants every week", SUNDAY)).toMatchObject({ title: "Water plants", repeat: { unit: "week", interval: 1 } });
+    expect(parseQuickAdd("Standup every day due fri", SUNDAY)).toMatchObject({ title: "Standup", due: "2026-11-06", repeat: { unit: "day", interval: 1 } });
+  });
+
+  it("reads every N units and ignores out-of-range counts", () => {
+    expect(parseQuickAdd("Rent every 2 months", SUNDAY).repeat).toEqual({ unit: "month", interval: 2 });
+    expect(parseQuickAdd("Backup every 3 days 1h", SUNDAY)).toMatchObject({ title: "Backup", estimate: 1, repeat: { unit: "day", interval: 3 } });
+    expect(parseQuickAdd("Odd every 0 days", SUNDAY).repeat).toBeNull();
+    expect(parseQuickAdd("Odd every 400 days", SUNDAY).repeat).toBeNull();
   });
 });

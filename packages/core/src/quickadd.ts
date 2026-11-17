@@ -1,5 +1,5 @@
 import { addDays, weekday } from "./dates";
-import type { IsoDate, Priority } from "./types";
+import type { IsoDate, Priority, Repeat } from "./types";
 
 export interface QuickAddResult {
   title: string;
@@ -7,6 +7,7 @@ export interface QuickAddResult {
   due: IsoDate | null;
   priority: Priority | null;
   project: string | null;
+  repeat: Repeat | null;
 }
 
 const WEEKDAYS: Record<string, number> = {
@@ -61,11 +62,12 @@ export function parseDate(text: string, today: IsoDate): { date: IsoDate; length
 /**
  * Turns one line into a task: "Lab 3 report 4h due fri #Cyber !high".
  * Understands an estimate (2h, 90m, 1.5h), a deadline after "due" or "by",
- * a project after "#" (use - for spaces), and priority as !high, !low or !!.
+ * a project after "#" (use - for spaces), priority as !high, !low or !!,
+ * and a repeat as "every week" or "every 2 months".
  */
 export function parseQuickAdd(input: string, today: IsoDate): QuickAddResult {
   let text = ` ${input.trim()} `;
-  const result: QuickAddResult = { title: "", estimate: null, due: null, priority: null, project: null };
+  const result: QuickAddResult = { title: "", estimate: null, due: null, priority: null, project: null, repeat: null };
 
   text = text.replace(/\s(\d+(?:[.,]\d+)?)\s?(h|hr|hrs|hours?|m|min|mins|minutes?)(?=\s)/i, (_, n: string, unit: string) => {
     const value = Number(n.replace(",", "."));
@@ -81,6 +83,13 @@ export function parseQuickAdd(input: string, today: IsoDate): QuickAddResult {
   text = text.replace(/\s(!high|!h|!!|!low|!l|!normal)(?=\s)/i, (_, p: string) => {
     const v = p.toLowerCase();
     result.priority = v === "!low" || v === "!l" ? 1 : v === "!normal" ? 2 : 3;
+    return " ";
+  });
+
+  text = text.replace(/\severy (?:(\d{1,3}) )?(day|week|month)s?(?=\s)/i, (_, n: string | undefined, unit: string) => {
+    const interval = n === undefined ? 1 : Number(n);
+    if (interval < 1 || interval > 365) return _;
+    result.repeat = { unit: unit.toLowerCase() as Repeat["unit"], interval };
     return " ";
   });
 

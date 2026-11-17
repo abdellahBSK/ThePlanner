@@ -7,6 +7,14 @@ export type WorkLog = Record<IsoDate, number>;
 export type TaskStatus = "todo" | "waiting" | "done";
 export type Priority = 1 | 2 | 3;
 
+export type RepeatUnit = "day" | "week" | "month";
+
+/** Repeat every `interval` units (1..365). */
+export interface Repeat {
+  unit: RepeatUnit;
+  interval: number;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -22,6 +30,10 @@ export interface Task {
   notBefore: IsoDate | null;
   notes: string;
   link: string;
+  /** Spawns the next occurrence when completed. Needs a due date to do so. */
+  repeat?: Repeat | null;
+  /** Id of the occurrence spawned from this task, so it spawns at most once. */
+  nextId?: string | null;
   log: WorkLog;
   createdAt: string;
   doneAt: string | null;
