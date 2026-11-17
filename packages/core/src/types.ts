@@ -32,6 +32,8 @@ export interface Task {
   link: string;
   /** Spawns the next occurrence when completed. Needs a due date to do so. */
   repeat?: Repeat | null;
+  /** Day of month a monthly series is anchored to, so month-end dates don't drift. Managed by the server. */
+  repeatAnchorDay?: number | null;
   /** Id of the occurrence spawned from this task, so it spawns at most once. */
   nextId?: string | null;
   log: WorkLog;

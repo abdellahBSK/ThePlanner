@@ -213,3 +213,13 @@ describe("quick add repeat edge cases", () => {
     expect(parseQuickAdd("Read every 2 hours", SUNDAY).repeat).toBeNull();
   });
 });
+
+describe("anchored month shift", () => {
+  it("returns to the anchor day after a short month", () => {
+    expect(shiftDate("2027-02-28", "month", 1, 31)).toBe("2027-03-31");
+    expect(shiftDate("2027-04-30", "month", 1, 31)).toBe("2027-05-31");
+    expect(shiftDate("2027-02-28", "month", 1, 30)).toBe("2027-03-30");
+    expect(shiftDate("2027-01-31", "month", 1, 31)).toBe("2027-02-28");
+    expect(shiftDate("2027-02-28", "month", 1, null)).toBe("2027-03-28");
+  });
+});

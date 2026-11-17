@@ -79,6 +79,9 @@ const MIGRATIONS: string[] = [
   ALTER TABLE tasks ADD COLUMN repeat_interval INTEGER;
   ALTER TABLE tasks ADD COLUMN next_id TEXT;
   `,
+  `
+  ALTER TABLE tasks ADD COLUMN repeat_anchor_day INTEGER;
+  `,
 ];
 
 export function openDb(path: string): Db {

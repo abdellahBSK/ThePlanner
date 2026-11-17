@@ -39,6 +39,7 @@ function toTask(row: Row, log: WorkLog): Task {
     notes: row.notes,
     link: row.link,
     repeat: row.repeat_unit ? { unit: row.repeat_unit, interval: row.repeat_interval } : null,
+    repeatAnchorDay: row.repeat_anchor_day ?? null,
     nextId: row.next_id ?? null,
     log,
     createdAt: row.created_at,
@@ -49,6 +50,9 @@ function toTask(row: Row, log: WorkLog): Task {
 function toHabit(row: Row, log: WorkLog): Habit {
   return { id: row.id, title: row.title, minutes: row.minutes, days: JSON.parse(row.days), link: row.link, active: !!row.active, log };
 }
+
+/** Day of month to keep for a monthly series, taken from its due date. */
+const anchorFor = (repeat: Task["repeat"], due: string | null): number | null => (repeat?.unit === "month" && due ? Number(due.slice(8, 10)) : null);
 
 export const newCalendarToken = () => randomBytes(24).toString("base64url");
 
@@ -172,11 +176,12 @@ export class Repo {
   createTask(userId: string, input: Omit<Task, "id" | "log" | "createdAt" | "doneAt" | "nextId">): Task {
     const id = randomUUID();
     this.db
-      .prepare(`INSERT INTO tasks (id, user_id, project_id, title, estimate, due, due_confirmed, priority, status, not_before, notes, link, created_at, done_at, repeat_unit, repeat_interval)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .prepare(`INSERT INTO tasks (id, user_id, project_id, title, estimate, due, due_confirmed, priority, status, not_before, notes, link, created_at, done_at, repeat_unit, repeat_interval, repeat_anchor_day)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(id, userId, input.projectId, input.title, input.estimate, input.due, input.dueConfirmed ? 1 : 0, input.priority, input.status,
         input.notBefore, input.notes, input.link, now(), input.status === "done" ? now() : null,
-        input.repeat?.unit ?? null, input.repeat?.interval ?? null);
+        input.repeat?.unit ?? null, input.repeat?.interval ?? null,
+        input.repeatAnchorDay ?? anchorFor(input.repeat, input.due));
     return this.getTask(userId, id)!;
   }
 
@@ -188,17 +193,19 @@ export class Repo {
     return toTask(row, log);
   }
 
-  updateTask(userId: string, id: string, patch: Partial<Omit<Task, "id" | "log" | "createdAt" | "doneAt" | "nextId">>): Task | null {
+  updateTask(userId: string, id: string, patch: Partial<Omit<Task, "id" | "log" | "createdAt" | "doneAt" | "nextId" | "repeatAnchorDay">>): Task | null {
     const current = this.getTask(userId, id);
     if (!current) return null;
     const next = { ...current, ...patch };
     const wasDone = current.status === "done";
+    const sameSeries = next.due === current.due && next.repeat?.unit === current.repeat?.unit;
+    const anchor = sameSeries && current.repeatAnchorDay ? current.repeatAnchorDay : anchorFor(next.repeat, next.due);
     const doneAt = next.status === "done" ? current.doneAt ?? now() : null;
     this.db
-      .prepare(`UPDATE tasks SET project_id = ?, title = ?, estimate = ?, due = ?, due_confirmed = ?, priority = ?, status = ?, not_before = ?, notes = ?, link = ?, done_at = ?, repeat_unit = ?, repeat_interval = ?
+      .prepare(`UPDATE tasks SET project_id = ?, title = ?, estimate = ?, due = ?, due_confirmed = ?, priority = ?, status = ?, not_before = ?, notes = ?, link = ?, done_at = ?, repeat_unit = ?, repeat_interval = ?, repeat_anchor_day = ?
                 WHERE id = ? AND user_id = ?`)
       .run(next.projectId, next.title, next.estimate, next.due, next.dueConfirmed ? 1 : 0, next.priority, next.status, next.notBefore,
-        next.notes, next.link, doneAt, next.repeat?.unit ?? null, next.repeat?.interval ?? null, id, userId);
+        next.notes, next.link, doneAt, next.repeat?.unit ?? null, next.repeat?.interval ?? null, anchor, id, userId);
     if (!wasDone && next.status === "done") this.spawnNext(userId, id);
     return this.getTask(userId, id);
   }
@@ -209,10 +216,10 @@ export class Repo {
     if (!task?.repeat || !task.due || task.nextId) return;
     const copy = this.createTask(userId, {
       title: task.title, projectId: task.projectId, estimate: task.estimate,
-      due: shiftDate(task.due, task.repeat.unit, task.repeat.interval),
+      due: shiftDate(task.due, task.repeat.unit, task.repeat.interval, task.repeatAnchorDay),
       dueConfirmed: task.dueConfirmed, priority: task.priority, status: "todo",
       notBefore: task.notBefore ? shiftDate(task.notBefore, task.repeat.unit, task.repeat.interval) : null,
-      notes: task.notes, link: task.link, repeat: task.repeat,
+      notes: task.notes, link: task.link, repeat: task.repeat, repeatAnchorDay: task.repeatAnchorDay,
     });
     this.db.prepare("UPDATE tasks SET next_id = ? WHERE id = ? AND user_id = ?").run(copy.id, id, userId);
   }

@@ -19,13 +19,13 @@ describe("database upgrades", () => {
     });
 
     // Roll back to the schema before recurring tasks: drop the new columns and the version bump.
-    first.exec("ALTER TABLE tasks DROP COLUMN repeat_unit; ALTER TABLE tasks DROP COLUMN repeat_interval; ALTER TABLE tasks DROP COLUMN next_id;");
-    first.exec("UPDATE schema_version SET version = version - 1");
+    first.exec("ALTER TABLE tasks DROP COLUMN repeat_unit; ALTER TABLE tasks DROP COLUMN repeat_interval; ALTER TABLE tasks DROP COLUMN next_id; ALTER TABLE tasks DROP COLUMN repeat_anchor_day;");
+    first.exec("UPDATE schema_version SET version = version - 2");
     first.close();
 
     const upgraded = openDb(path);
     const columns = (upgraded.prepare("PRAGMA table_info(tasks)").all() as { name: string }[]).map(c => c.name);
-    expect(columns).toEqual(expect.arrayContaining(["repeat_unit", "repeat_interval", "next_id"]));
+    expect(columns).toEqual(expect.arrayContaining(["repeat_unit", "repeat_interval", "next_id", "repeat_anchor_day"]));
 
     const repo = new Repo(upgraded);
     expect(repo.getTask(user.id, old.id)).toMatchObject({ title: "Old task", notes: "keep me", repeat: null, nextId: null });
