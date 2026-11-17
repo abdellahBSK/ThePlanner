@@ -307,6 +307,19 @@ describe("recurring tasks", () => {
     expect(third.due).toBe("2027-03-31");
   });
 
+  it("re-anchors a monthly series when its due date is edited", async () => {
+    const agent = await signedIn(ctx.app);
+    const { body: task } = await agent.post("/api/tasks").send({ title: "Rent", estimate: 1, due: "2027-01-31", repeat: { unit: "month", interval: 1 } });
+    expect(task.repeatAnchorDay).toBe(31);
+
+    const moved = await agent.patch(`/api/tasks/${task.id}`).send({ due: "2027-02-15" }).expect(200);
+    expect(moved.body).toMatchObject({ due: "2027-02-15", repeatAnchorDay: 15 });
+
+    await agent.patch(`/api/tasks/${task.id}`).send({ status: "done" }).expect(200);
+    const copy = (await tasksOf(agent)).find(t => t.id !== task.id);
+    expect(copy).toMatchObject({ due: "2027-03-15", repeatAnchorDay: 15 });
+  });
+
   it("explains an interval above 365", async () => {
     const agent = await signedIn(ctx.app);
     const res = await agent.post("/api/tasks").send({ title: "Big", estimate: 1, repeat: { unit: "month", interval: 366 } });
