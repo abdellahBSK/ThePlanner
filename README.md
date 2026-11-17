@@ -127,7 +127,7 @@ Unit tests cover the scheduler, timeline, date and quick-add parsing, and the iC
 
 - [ ] Weekly review email
 - [ ] Two-way Google Calendar sync, so the plan avoids your existing events
-- [ ] Recurring tasks
+- [x] Recurring tasks (repeat every N days, weeks or months; the next one is created when you finish a task with a deadline)
 - [ ] Shared projects for group work
 
 ## License

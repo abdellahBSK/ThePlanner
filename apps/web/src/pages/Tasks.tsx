@@ -1,7 +1,7 @@
 import { loggedTotal, type Project, type Task } from "@theplanner/core";
 import { Check, Pencil, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
-import { DueChip, Dot, Empty, Meter, PageHead } from "../components/bits";
+import { DueChip, Dot, RepeatChip, Empty, Meter, PageHead } from "../components/bits";
 import { useTaskEditor } from "../components/TaskEditor";
 import { fmtDate, fmtHours, PROJECT_COLORS } from "../lib/format";
 import { usePlanner } from "../lib/store";
@@ -124,6 +124,7 @@ function ProjectGroup({ project, tasks }: { project: Project | null; tasks: Task
                 <span className="task-title">{t.title}</span>
                 <span className="meta">
                   <DueChip due={t.due} today={today} confirmed={t.dueConfirmed} atRisk={plan.atRisk.includes(t.id)} />
+                  <RepeatChip repeat={t.repeat} />
                   <span className="chip num">{logged ? `${fmtHours(logged)} / ` : ""}{fmtHours(t.estimate)}</span>
                   {t.priority === 3 && <span className="chip chip-soon">high</span>}
                   {t.status === "waiting" && <span className="chip">on hold</span>}

@@ -1,14 +1,14 @@
-import type { Priority, Task, TaskStatus } from "@theplanner/core";
+import type { Priority, RepeatUnit, Task, TaskStatus } from "@theplanner/core";
 import { X } from "lucide-react";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { fmtHours, PROJECT_COLORS } from "../lib/format";
 import { usePlanner } from "../lib/store";
 
-type Draft = Omit<Task, "id" | "log" | "createdAt" | "doneAt">;
+type Draft = Omit<Task, "id" | "log" | "createdAt" | "doneAt" | "nextId">;
 const EditorContext = createContext<(taskId: string | null, preset?: Partial<Draft>) => void>(() => {});
 export const useTaskEditor = () => useContext(EditorContext);
 
-const blank: Draft = { title: "", projectId: null, estimate: 2, due: null, dueConfirmed: true, priority: 2, status: "todo", notBefore: null, notes: "", link: "" };
+const blank: Draft = { title: "", projectId: null, estimate: 2, due: null, dueConfirmed: true, priority: 2, status: "todo", notBefore: null, notes: "", link: "", repeat: null };
 
 export function TaskEditorProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState<{ id: string | null; preset?: Partial<Draft> } | null>(null);
@@ -118,6 +118,31 @@ function TaskEditor({ taskId, preset, onClose }: { taskId: string | null; preset
             </div>
             <small className="hint">Tasks on hold stay in your list but aren't scheduled.</small>
           </fieldset>
+
+          <div className="field-row">
+            <label className="field">
+              <span>Repeat</span>
+              <select
+                value={draft.repeat?.unit ?? ""}
+                onChange={e => set("repeat", e.target.value ? { unit: e.target.value as RepeatUnit, interval: draft.repeat?.interval ?? 1 } : null)}
+              >
+                <option value="">Never</option>
+                <option value="day">Every N days</option>
+                <option value="week">Every N weeks</option>
+                <option value="month">Every N months</option>
+              </select>
+            </label>
+            {draft.repeat && (
+              <label className="field">
+                <span>Every N {draft.repeat.unit}s</span>
+                <input
+                  type="number" min={1} max={365} step={1} value={draft.repeat.interval}
+                  onChange={e => set("repeat", { unit: draft.repeat!.unit, interval: Math.min(365, Math.max(1, Math.round(Number(e.target.value)) || 1)) })}
+                />
+              </label>
+            )}
+          </div>
+          {draft.repeat && <small className="hint">The next one is created when you finish this task{draft.due ? "." : ", but only if it has a deadline."}</small>}
 
           <label className="field">
             <span>Don't start before</span>

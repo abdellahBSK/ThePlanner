@@ -1,6 +1,7 @@
 import { parseQuickAdd } from "@theplanner/core";
 import { CornerDownLeft } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { repeatLabel } from "./bits";
 import { fmtDate, fmtHours } from "../lib/format";
 import { usePlanner } from "../lib/store";
 
@@ -34,6 +35,7 @@ export function QuickAdd() {
         estimate: parsed.estimate ?? 1,
         due: parsed.due,
         priority: parsed.priority ?? 2,
+        ...(parsed.repeat ? { repeat: parsed.repeat } : {}),
         ...(parsed.project ? { projectName: parsed.project } : {}),
       },
       `Added “${parsed.title}”`,
@@ -60,6 +62,7 @@ export function QuickAdd() {
           <span className="qa-title">{parsed.title || "Needs a title"}</span>
           <span className="chip">{fmtHours(parsed.estimate ?? 1)}{parsed.estimate === null ? " (default)" : ""}</span>
           {parsed.due && <span className="chip">due {fmtDate(parsed.due)}</span>}
+          {parsed.repeat && <span className="chip">↻ {repeatLabel(parsed.repeat)}</span>}
           {parsed.project && <span className="chip">#{parsed.project}</span>}
           {parsed.priority === 3 && <span className="chip chip-soon">high priority</span>}
           {parsed.priority === 1 && <span className="chip">low priority</span>}
