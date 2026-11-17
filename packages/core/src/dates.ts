@@ -1,4 +1,4 @@
-import type { IsoDate } from "./types";
+import type { IsoDate, RepeatUnit } from "./types";
 
 const DAY_MS = 86_400_000;
 
@@ -13,6 +13,22 @@ export function formatIso(date: Date): IsoDate {
 
 export function addDays(date: IsoDate, days: number): IsoDate {
   return formatIso(new Date(parseIso(date).getTime() + days * DAY_MS));
+}
+
+/**
+ * Moves a date by interval x unit. Months clamp to the end of the month (Jan 31 + 1 month = Feb 28/29).
+ * Pass `anchorDay` (the series' original day of month) so a clamped date doesn't drift: Feb 28 + 1 month with anchor 31 = Mar 31.
+ */
+export function shiftDate(date: IsoDate, unit: RepeatUnit, interval: number, anchorDay?: number | null): IsoDate {
+  if (unit === "day") return addDays(date, interval);
+  if (unit === "week") return addDays(date, interval * 7);
+  const [y, m, d0] = date.split("-").map(Number);
+  const d = Math.max(d0, anchorDay ?? 0);
+  const index = y * 12 + (m - 1) + interval;
+  const year = Math.floor(index / 12);
+  const month = index % 12;
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  return formatIso(new Date(Date.UTC(year, month, Math.min(d, lastDay))));
 }
 
 export function daysBetween(from: IsoDate, to: IsoDate): number {

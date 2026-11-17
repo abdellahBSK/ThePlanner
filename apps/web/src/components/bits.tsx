@@ -1,4 +1,5 @@
 import { Minus, Plus } from "lucide-react";
+import type { Repeat } from "@theplanner/core";
 import type { ReactNode } from "react";
 import { dueLabel, fmtHours } from "../lib/format";
 
@@ -21,6 +22,16 @@ export function DueChip({ due, today, confirmed, atRisk }: { due: string | null;
       {confirmed ? "" : "≈ "}{text}
     </span>
   );
+}
+
+export function repeatLabel(repeat: Repeat): string {
+  if (repeat.interval === 1) return { day: "daily", week: "weekly", month: "monthly" }[repeat.unit];
+  return `every ${repeat.interval} ${repeat.unit}s`;
+}
+
+export function RepeatChip({ repeat }: { repeat?: Repeat | null }) {
+  if (!repeat) return null;
+  return <span className="chip" title="Repeats when finished">↻ {repeatLabel(repeat)}</span>;
 }
 
 export function Dot({ color }: { color: string }) {
