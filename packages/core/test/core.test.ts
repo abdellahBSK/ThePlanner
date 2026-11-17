@@ -100,8 +100,10 @@ describe("timeline", () => {
 describe("dates", () => {
   it("reads the local date and minute in a time zone", () => {
     const at = new Date("2026-11-01T23:30:00Z");
-    expect(nowIn("Africa/Casablanca", at)).toEqual({ date: "2026-11-01", minutes: 23 * 60 + 30 });
-    expect(nowIn("Asia/Tokyo", at).date).toBe("2026-11-02");
+    expect(nowIn("Etc/UTC", at)).toEqual({ date: "2026-11-01", minutes: 23 * 60 + 30 });
+    expect(nowIn("Asia/Tokyo", at)).toEqual({ date: "2026-11-02", minutes: 8 * 60 + 30 });
+    // Etc/GMT-5 is a fixed UTC+5 (POSIX sign inversion)
+    expect(nowIn("Etc/GMT-5", at)).toEqual({ date: "2026-11-02", minutes: 4 * 60 + 30 });
   });
 
   it("parses the ways people write dates", () => {
