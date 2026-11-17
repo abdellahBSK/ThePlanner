@@ -170,7 +170,7 @@ function ScheduleRow({ item, planned, done, onFocus }: { item: TimelineItem; pla
             <div className="row-gap">
               {task && <button className="btn btn-sm" onClick={() => actions.setLog(task.id, today, logged + 0.5)}>+30 min</button>}
               <button className="btn btn-sm" onClick={onFocus}><Timer size={14} /> Focus</button>
-              {task && <button className="btn btn-sm btn-primary" onClick={() => actions.updateTask(task.id, { status: "done" }, "Task finished")}>Finish task</button>}
+              {task && <button className="btn btn-sm btn-primary" onClick={() => actions.finishTask(task.id)}>Finish task</button>}
             </div>
           )}
         </div>

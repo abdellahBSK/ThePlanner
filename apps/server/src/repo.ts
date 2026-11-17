@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { DEFAULT_SETTINGS, shiftDate, type Habit, type Project, type Settings, type Task, type WorkLog } from "@theplanner/core";
+import { DEFAULT_SETTINGS, addDays, daysBetween, shiftDate, type Habit, type Project, type Settings, type Task, type WorkLog } from "@theplanner/core";
 import type { Db } from "./db";
 
 export interface User {
@@ -214,11 +214,13 @@ export class Repo {
   private spawnNext(userId: string, id: string): void {
     const task = this.getTask(userId, id);
     if (!task?.repeat || !task.due || task.nextId) return;
+    const due = shiftDate(task.due, task.repeat.unit, task.repeat.interval, task.repeatAnchorDay);
     const copy = this.createTask(userId, {
       title: task.title, projectId: task.projectId, estimate: task.estimate,
-      due: shiftDate(task.due, task.repeat.unit, task.repeat.interval, task.repeatAnchorDay),
+      due,
       dueConfirmed: task.dueConfirmed, priority: task.priority, status: "todo",
-      notBefore: task.notBefore ? shiftDate(task.notBefore, task.repeat.unit, task.repeat.interval) : null,
+      // Keep the same lead time before the deadline, so notBefore follows the anchored due date without drifting.
+      notBefore: task.notBefore ? addDays(due, -daysBetween(task.notBefore, task.due)) : null,
       notes: task.notes, link: task.link, repeat: task.repeat, repeatAnchorDay: task.repeatAnchorDay,
     });
     this.db.prepare("UPDATE tasks SET next_id = ? WHERE id = ? AND user_id = ?").run(copy.id, id, userId);

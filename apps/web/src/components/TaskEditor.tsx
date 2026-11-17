@@ -10,6 +10,8 @@ export const useTaskEditor = () => useContext(EditorContext);
 
 const blank: Draft = { title: "", projectId: null, estimate: 2, due: null, dueConfirmed: true, priority: 2, status: "todo", notBefore: null, notes: "", link: "", repeat: null };
 
+const clampInterval = (text: string) => Math.min(365, Math.max(1, Math.round(Number(text)) || 1));
+
 export function TaskEditorProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState<{ id: string | null; preset?: Partial<Draft> } | null>(null);
   const openEditor = useCallback((id: string | null, preset?: Partial<Draft>) => setOpen({ id, preset }), []);
@@ -25,6 +27,7 @@ function TaskEditor({ taskId, preset, onClose }: { taskId: string | null; preset
   const { state, taskById, plan, actions } = usePlanner();
   const existing = taskId ? taskById.get(taskId) : undefined;
   const [draft, setDraft] = useState<Draft>(() => (existing ? { ...existing } : { ...blank, ...preset }));
+  const [intervalText, setIntervalText] = useState(String(existing?.repeat?.interval ?? 1));
   const [newProject, setNewProject] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -46,7 +49,8 @@ function TaskEditor({ taskId, preset, onClose }: { taskId: string | null; preset
     e.preventDefault();
     if (!draft.title.trim()) return;
     setSaving(true);
-    const payload = { ...draft, title: draft.title.trim(), ...(draft.projectId === "__new" ? { projectId: null, projectName: newProject.trim() || "New project" } : {}) };
+    const repeat = draft.repeat ? { unit: draft.repeat.unit, interval: clampInterval(intervalText) } : null;
+    const payload = { ...draft, repeat, title: draft.title.trim(), ...(draft.projectId === "__new" ? { projectId: null, projectName: newProject.trim() || "New project" } : {}) };
     const ok = existing ? await actions.updateTask(existing.id, payload, "Saved") : await actions.createTask(payload);
     setSaving(false);
     if (ok) onClose();
@@ -119,29 +123,43 @@ function TaskEditor({ taskId, preset, onClose }: { taskId: string | null; preset
             <small className="hint">Tasks on hold stay in your list but aren't scheduled.</small>
           </fieldset>
 
-          <div className="field-row">
-            <label className="field">
-              <span>Repeat</span>
-              <select
-                value={draft.repeat?.unit ?? ""}
-                onChange={e => set("repeat", e.target.value ? { unit: e.target.value as RepeatUnit, interval: draft.repeat?.interval ?? 1 } : null)}
-              >
-                <option value="">Never</option>
-                <option value="day">Every N days</option>
-                <option value="week">Every N weeks</option>
-                <option value="month">Every N months</option>
-              </select>
-            </label>
-            {draft.repeat && (
+          <label className="field">
+            <span>Repeat</span>
+            <select
+              value={draft.repeat ? "on" : ""}
+              onChange={e => {
+                set("repeat", e.target.value ? { unit: draft.repeat?.unit ?? "week", interval: draft.repeat?.interval ?? 1 } : null);
+                setIntervalText("1");
+              }}
+            >
+              <option value="">Never</option>
+              <option value="on">Repeat every…</option>
+            </select>
+          </label>
+          {draft.repeat && (
+            <div className="field-row">
               <label className="field">
-                <span>Every N {draft.repeat.unit}s</span>
+                <span>Repeat every</span>
                 <input
-                  type="number" min={1} max={365} step={1} value={draft.repeat.interval}
-                  onChange={e => set("repeat", { unit: draft.repeat!.unit, interval: Math.min(365, Math.max(1, Math.round(Number(e.target.value)) || 1)) })}
+                  type="number" min={1} max={365} step={1} inputMode="numeric" value={intervalText}
+                  onChange={e => {
+                    setIntervalText(e.target.value);
+                    const n = Math.round(Number(e.target.value));
+                    if (e.target.value !== "" && n >= 1 && n <= 365) set("repeat", { unit: draft.repeat!.unit, interval: n });
+                  }}
+                  onBlur={() => { const n = clampInterval(intervalText); setIntervalText(String(n)); set("repeat", { unit: draft.repeat!.unit, interval: n }); }}
                 />
               </label>
-            )}
-          </div>
+              <label className="field">
+                <span>Unit</span>
+                <select value={draft.repeat.unit} onChange={e => set("repeat", { unit: e.target.value as RepeatUnit, interval: draft.repeat!.interval })}>
+                  <option value="day">{draft.repeat.interval === 1 ? "day" : "days"}</option>
+                  <option value="week">{draft.repeat.interval === 1 ? "week" : "weeks"}</option>
+                  <option value="month">{draft.repeat.interval === 1 ? "month" : "months"}</option>
+                </select>
+              </label>
+            </div>
+          )}
           {draft.repeat && <small className="hint">The next one is created when you finish this task{draft.due ? "." : ", but only if it has a deadline."}</small>}
 
           <label className="field">

@@ -3,6 +3,7 @@ import { buildPlan, nowIn, type Habit, type Plan, type Settings, type Task } fro
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, ApiError, type AppState, type TaskInput } from "./api";
 import { useToast } from "../components/Toast";
+import { fmtDate } from "./format";
 
 export const STATE_KEY = ["state"];
 
@@ -76,6 +77,16 @@ function useActions() {
     createTask: (input: TaskInput, message = "Task added") => run(null, () => api.createTask(input), message),
     updateTask: (id: string, patch: TaskInput, message?: string) =>
       run(s => ({ ...s, tasks: s.tasks.map(t => (t.id === id ? { ...t, ...patch } as Task : t)) }), () => api.updateTask(id, patch), message),
+    /** Marks a task done; if it repeats, the toast says when the next one is due. */
+    finishTask: async (id: string) => {
+      const done = await run(
+        s => ({ ...s, tasks: s.tasks.map(t => (t.id === id ? { ...t, status: "done" } as Task : t)) }),
+        () => api.updateTask(id, { status: "done" }),
+      );
+      if (!done) return;
+      const next = done.nextId ? qc.getQueryData<AppState>(STATE_KEY)?.tasks.find(t => t.id === done.nextId) : undefined;
+      toast(next?.due && next.status === "todo" ? `Done. Next one due ${fmtDate(next.due)}` : "Task finished");
+    },
     deleteTask: (id: string) => run(s => ({ ...s, tasks: s.tasks.filter(t => t.id !== id) }), () => api.deleteTask(id), "Task deleted"),
     createHabit: (input: Partial<Habit>) => run(null, () => api.createHabit(input), "Habit added"),
     updateHabit: (id: string, patch: Partial<Habit>) =>

@@ -295,7 +295,7 @@ describe("recurring tasks", () => {
     expect(await tasksOf(agent)).toHaveLength(1);
   });
 
-  it("keeps the month-end date through a chain of monthly repeats (expected to fail: drifts to the 28th)", async () => {
+  it("keeps the month-end date through a chain of monthly repeats (Jan 31, Feb 28, Mar 31)", async () => {
     const agent = await signedIn(ctx.app);
     const { body: first } = await agent.post("/api/tasks").send({ title: "Rent", estimate: 1, due: "2027-01-31", repeat: { unit: "month", interval: 1 } });
     await agent.patch(`/api/tasks/${first.id}`).send({ status: "done" });
@@ -318,6 +318,17 @@ describe("recurring tasks", () => {
     await agent.patch(`/api/tasks/${task.id}`).send({ status: "done" }).expect(200);
     const copy = (await tasksOf(agent)).find(t => t.id !== task.id);
     expect(copy).toMatchObject({ due: "2027-03-15", repeatAnchorDay: 15 });
+  });
+
+  it("keeps the notBefore lead time through a monthly chain", async () => {
+    const agent = await signedIn(ctx.app);
+    const { body: first } = await agent.post("/api/tasks").send({ title: "Rent", estimate: 1, due: "2027-01-31", notBefore: "2027-01-24", repeat: { unit: "month", interval: 1 } });
+    await agent.patch(`/api/tasks/${first.id}`).send({ status: "done" });
+    const second = (await tasksOf(agent)).find(t => t.id !== first.id);
+    expect([second.due, second.notBefore]).toEqual(["2027-02-28", "2027-02-21"]);
+    await agent.patch(`/api/tasks/${second.id}`).send({ status: "done" });
+    const third = (await tasksOf(agent)).find(t => t.status === "todo" && t.id !== second.id);
+    expect([third.due, third.notBefore]).toEqual(["2027-03-31", "2027-03-24"]);
   });
 
   it("explains an interval above 365", async () => {

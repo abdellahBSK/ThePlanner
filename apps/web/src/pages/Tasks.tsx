@@ -117,7 +117,7 @@ function ProjectGroup({ project, tasks }: { project: Project | null; tasks: Task
           return (
             <li key={t.id} className={`task-row${t.status === "done" ? " is-done" : ""}`}>
               <button className="tick" aria-pressed={t.status === "done"} aria-label={t.status === "done" ? `Reopen ${t.title}` : `Finish ${t.title}`}
-                onClick={() => actions.updateTask(t.id, { status: t.status === "done" ? "todo" : "done" }, t.status === "done" ? "Reopened" : "Task finished")}>
+                onClick={() => (t.status === "done" ? actions.updateTask(t.id, { status: "todo" }, "Reopened") : actions.finishTask(t.id))}>
                 {t.status === "done" && <Check size={14} strokeWidth={3} />}
               </button>
               <button className="task-main" onClick={() => openEditor(t.id)}>
