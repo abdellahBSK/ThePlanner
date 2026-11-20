@@ -18,12 +18,21 @@ const MONTHS: Record<string, number> = {
   jul: 7, july: 7, aug: 8, august: 8, sep: 9, sept: 9, september: 9, oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12,
 };
 
+const isRealDate = (year: number, month: number, day: number) => {
+  const d = new Date(Date.UTC(year, month - 1, day));
+  return d.getUTCFullYear() === year && d.getUTCMonth() === month - 1 && d.getUTCDate() === day;
+};
+
 function nextYearlyDate(today: IsoDate, month: number, day: number): IsoDate | null {
   if (month < 1 || month > 12 || day < 1 || day > 31) return null;
-  let year = Number(today.slice(0, 4));
-  let candidate = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-  if (candidate < today) candidate = `${year + 1}${candidate.slice(4)}`;
-  return candidate;
+  const start = Number(today.slice(0, 4));
+  // Try this year, then the next few (Feb 29 needs the next leap year, which can be 8 years out).
+  for (let year = start; year <= start + 8; year++) {
+    if (!isRealDate(year, month, day)) continue;
+    const candidate = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    if (candidate >= today) return candidate;
+  }
+  return null;
 }
 
 /** Reads a date written the way people type it: today, tomorrow, fri, next mon, 7/11, nov 7, 2026-11-07. */
@@ -42,7 +51,9 @@ export function parseDate(text: string, today: IsoDate): { date: IsoDate; length
     if (m[1]) diff += 7;
     return { date: addDays(today, diff), length: m[0].length };
   }
-  if ((m = s.match(/^(\d{4})-(\d{2})-(\d{2})\b/))) return { date: m[0], length: m[0].length };
+  if ((m = s.match(/^(\d{4})-(\d{2})-(\d{2})\b/))) {
+    return isRealDate(Number(m[1]), Number(m[2]), Number(m[3])) ? { date: m[0], length: m[0].length } : null;
+  }
   if ((m = s.match(/^(\d{1,2})\/(\d{1,2})\b/))) {
     const date = nextYearlyDate(today, Number(m[2]), Number(m[1]));
     return date ? { date, length: m[0].length } : null;
@@ -60,7 +71,7 @@ export function parseDate(text: string, today: IsoDate): { date: IsoDate; length
 
 /**
  * Turns one line into a task: "Lab 3 report 4h due fri #Cyber !high".
- * Understands an estimate (2h, 90m, 1.5h), a deadline after "due" or "by",
+ * Understands an estimate (2h, 90m, 1.5h), a deadline after "due", "by" or "on",
  * a project after "#" (use - for spaces), and priority as !high, !low or !!.
  */
 export function parseQuickAdd(input: string, today: IsoDate): QuickAddResult {
